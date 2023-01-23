@@ -42,8 +42,7 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 	// Create Fluent Bit decoder
 	dec := output.NewDecoder(data, int(length))
 
-	// Iterate Records
-	count = 0
+	count = 0 // batch out count
 	for {
 		ret, ts, record = output.GetRecord(dec)
 		if ret != 0 { // all record have been flushed
@@ -68,11 +67,6 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 			return output.FLB_ERROR
 		}
 		count++
-	}
-
-	if C.int(count) != length {
-		log.Printf("error: count(%d) != length(%d)", count, length)
-		return output.FLB_ERROR
 	}
 
 	// Return options:
