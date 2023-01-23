@@ -5,7 +5,6 @@ import (
 
 	"fmt"
 	"log"
-	"sort"
 	"strings"
 	"time"
 	"unsafe"
@@ -68,7 +67,6 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 		for i, v := range optKeys {
 			optKeys[i] = strings.TrimSpace(v)
 		}
-		sort.Strings(optKeys)
 	}
 
 	if getParam("surpress_duplication") == "yes" {
