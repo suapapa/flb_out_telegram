@@ -6,7 +6,7 @@ COPY . .
 RUN go build -buildmode=c-shared -o out_telegram.so *.go
 
 # ---
-FROM fluent/fluent-bit:latest-debug
+FROM fluent/fluent-bit:latest
 
 COPY --from=builder /src/out_telegram.so /plugins/out_telegram.so
 COPY ./conf /conf
