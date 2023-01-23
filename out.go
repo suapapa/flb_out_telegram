@@ -2,14 +2,24 @@ package main
 
 import (
 	"C"
+
 	"fmt"
+	"log"
+	"sort"
+	"strings"
 	"time"
 	"unsafe"
 
 	"github.com/fluent/fluent-bit-go/output"
 )
-import (
-	"log"
+
+var (
+	msgKey     = "message"
+	tsLayout   = "20060102T15:04:05"
+	tsLoc      *time.Location
+	optKeys    []string
+	lastMsgMap = map[string]string{}
+	skipDupMsg bool
 )
 
 //export FLBPluginRegister
@@ -22,11 +32,46 @@ func FLBPluginRegister(def unsafe.Pointer) int {
 //
 //export FLBPluginInit
 func FLBPluginInit(plugin unsafe.Pointer) int {
-	tgApiToken := output.FLBPluginConfigKey(plugin, "api_token")
-	tgRoomIDs := output.FLBPluginConfigKey(plugin, "room_ids")
+	getParam := func(key string) string {
+		return output.FLBPluginConfigKey(plugin, key)
+	}
+
+	tgApiToken := getParam("api_token")
+	tgRoomIDs := getParam("room_ids")
 	if err := initTgBot(tgApiToken, tgRoomIDs); err != nil {
 		log.Printf("fail to init telegram bot: %v", err)
 		return output.FLB_ERROR
+	}
+
+	if getParam("message_key") != "" {
+		msgKey = getParam("message_key")
+	}
+
+	if getParam("timestamp_layout") != "" {
+		tsLayout = getParam("timestamp_layout")
+	}
+
+	if getParam("timestamp_location") != "" {
+		var err error
+		tsLoc, err = time.LoadLocation(getParam("timestamp_location"))
+		if err != nil {
+			log.Printf("fail to load location: %v", err)
+			return output.FLB_ERROR
+		}
+	} else {
+		tsLoc, _ = time.LoadLocation("UTC")
+	}
+
+	if getParam("option_keys") != "" {
+		optKeys = strings.Split(getParam("option_keys"), ",")
+		for i, v := range optKeys {
+			optKeys[i] = strings.TrimSpace(v)
+		}
+		sort.Strings(optKeys)
+	}
+
+	if getParam("supress_duplication") == "yes" {
+		skipDupMsg = true
 	}
 
 	return output.FLB_OK
@@ -34,22 +79,55 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 
 //export FLBPluginFlush
 func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
-	var count int
 	var ret int
 	var ts interface{}
 	var record map[interface{}]interface{}
+	dec := output.NewDecoder(data, int(length)) // Create Fluent Bit decoder
 
-	// Create Fluent Bit decoder
-	dec := output.NewDecoder(data, int(length))
-
-	count = 0 // batch out count
+	// count := 0 // batch out count
 	for {
 		ret, ts, record = output.GetRecord(dec)
 		if ret != 0 { // all record have been flushed
 			break
 		}
 
-		timestamp := getTime(ts)
+		msgMap := map[string]string{}
+		for k, v := range record {
+			msgMap[str(k)] = str(v)
+		}
+
+		var msg string
+		var ok bool
+		if msg, ok = msgMap[msgKey]; !ok {
+			log.Printf("message key not found: %v", msgKey)
+			return output.FLB_ERROR
+		}
+
+		if lastMsg, ok := lastMsgMap[str(tag)]; ok && skipDupMsg && lastMsg == msg {
+			continue
+		}
+		lastMsgMap[str(tag)] = msg
+
+		tsStr := getTime(ts).In(tsLoc).Format(tsLayout)
+		var optMsg string
+		for _, k := range optKeys {
+			if v, ok := msgMap[k]; ok {
+				optMsg += fmt.Sprintf("- %s: %s\n", k, v)
+			}
+		}
+		if optMsg != "" {
+			msg = fmt.Sprintf(
+				"%s\n---\n%s\n---\n%s",
+				msg, optMsg, tsStr,
+			)
+		} else {
+			msg = fmt.Sprintf(
+				"%s\n---\n%s",
+				msg, tsStr,
+			)
+		}
+
+		/*V
 		var msg string
 		// Print record keys and values
 		msg = fmt.Sprintf(
@@ -62,11 +140,12 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 			msg += fmt.Sprintf("\"%s\": %v, ", k, v)
 		}
 		msg += "}\n"
+		*/
 		if err := sendMsgToTelegram(msg); err != nil {
 			log.Printf("fail to send msg to telegram: %v", err)
 			return output.FLB_ERROR
 		}
-		count++
+		// count++
 	}
 
 	// Return options:
@@ -80,6 +159,21 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 //export FLBPluginExit
 func FLBPluginExit() int {
 	return output.FLB_OK
+}
+
+// ---
+
+func str(v interface{}) string {
+	switch v.(type) {
+	case string:
+		return v.(string)
+	case []byte:
+		return string(v.([]byte))
+	case *C.char:
+		return C.GoString(v.(*C.char))
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
 
 func getTime(ts any) time.Time {
