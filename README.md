@@ -8,34 +8,25 @@ FluentBit output plugin for Telegram
 |-------------|-------------------------|-------------------------------|-----------|
 | Name        | telegram                | fixed                         | yes       |
 | api_token   | YOUT_TELEGRAM_API_TOKEN | telegram api token            | yes       |
-| room_id     | ROOM_IDs                | comma seperated room ids      | yes       |
+| room_ids    | ROOM_IDs                | comma seperated room ids      | yes       |
 | message_key | message                 | key for message to send (WIP) | no        |
 
-## Build the plugin
+## Build and Run
+
+Build docker image `flb-tg` which is Telegram enabled fluent-bit image:
 
 ```bash
-make
+docker build --tag=flb-tg:latest .
 ```
 
-## Example configuration
-
-```ini
-￼[SERVICE]
-    plugins_file /path/to/out_telegram.so
-
-​￼[INPUT]
-    Name dummy
-
-​￼[OUTPUT]
-    Name        telegram
-    api_token   YOUR_TELEGRAM_API_TOKEN
-    room_ids    ROOM_ID # can set multiple rooms like; ROOM_ID1,ROOM_ID2
-```
-
-## Run FluentBit with External plugin
+Run example:
 
 ```bash
-fluent-bit -e /path/to/out_telegram.so -i cpu -o gstdout
+docker run \
+  -it --rm \
+  -e TG_API_TOKEN="YOUR_TELEGRAM_API_TOKEN"
+  -e TG_ROOM_IDS="ROOM_ID1, ROOM_ID2"
+  flb-tg:latest
 ```
 
 ## Reference
