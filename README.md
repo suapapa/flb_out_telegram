@@ -29,6 +29,20 @@ docker run \
   flb-tg:latest
 ```
 
+## Configuration
+
+Check out [sample conf file](conf/flb.conf).
+Make your own conf and run like this:
+
+```bash
+docker run \
+  -it --rm \
+  -e TG_API_TOKEN="YOUR_TELEGRAM_API_TOKEN"
+  -e TG_ROOM_IDS="ROOM_ID1, ROOM_ID2"
+  -v /YOUR/FLB_CONF_PATH:/conf/flb.conf
+  flb-tg:latest
+```
+
 ## Reference
 
 - <https://docs.fluentbit.io/manual/>
