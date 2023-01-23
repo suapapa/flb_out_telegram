@@ -13,13 +13,13 @@ import (
 )
 
 var (
-	msgKey     = "message"
-	tsLayout   = "20060102T15:04:05Z"
-	tsLoc      *time.Location
-	optKeys    []string
-	lastMsgMap = map[string]string{}
-	skipDupMsg bool
-	floorFloat bool
+	msgKey       = "message"
+	tsLayout     = "20060102T15:04:05Z"
+	tsLoc        *time.Location
+	optKeys      []string
+	lastMsgByTag = map[string]string{}
+	skipDupMsg   bool
+	floorFloat   bool
 )
 
 //export FLBPluginRegister
@@ -94,27 +94,27 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 			break
 		}
 
-		msgMap := map[string]string{}
+		valueByKey := map[string]string{}
 		for k, v := range record {
-			msgMap[str(k)] = str(v)
+			valueByKey[str(k)] = str(v)
 		}
 
 		var msg string
 		var ok bool
-		if msg, ok = msgMap[msgKey]; !ok {
+		if msg, ok = valueByKey[msgKey]; !ok {
 			log.Printf("message key not found: %v", msgKey)
 			return output.FLB_ERROR
 		}
 
-		if lastMsg, ok := lastMsgMap[str(tag)]; ok && skipDupMsg && lastMsg == msg {
+		if lastMsg, ok := lastMsgByTag[str(tag)]; ok && skipDupMsg && lastMsg == msg {
 			continue
 		}
-		lastMsgMap[str(tag)] = msg
+		lastMsgByTag[str(tag)] = msg
 
 		tsStr := getTime(ts).In(tsLoc).Format(tsLayout)
 		var optMsg string
 		for _, k := range optKeys {
-			if v, ok := msgMap[k]; ok {
+			if v, ok := valueByKey[k]; ok {
 				optMsg += fmt.Sprintf("- %s: %s\n", k, v)
 			}
 		}
