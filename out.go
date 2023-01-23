@@ -15,7 +15,7 @@ import (
 
 var (
 	msgKey     = "message"
-	tsLayout   = "20060102T15:04:05"
+	tsLayout   = "20060102T15:04:05Z"
 	tsLoc      *time.Location
 	optKeys    []string
 	lastMsgMap = map[string]string{}

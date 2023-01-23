@@ -4,17 +4,17 @@ FluentBit output plugin for Telegram
 
 ## FluentBit OUTPUT Params
 
-| param name            | default           | description                          | example               | mandatory |
-|-----------------------|-------------------|--------------------------------------|-----------------------|-----------|
-| Name                  | telegram          | pulgin name (fixed)                  |                       | yes       |
-| api_token             |                   | telegram api token                   | YOUR_API_KEY          | yes       |
-| room_ids              |                   | comma seperated room ids             | 1111111111,2222222222 | yes       |
-| message_key           | message           | key for message to send              | cpu_p                 | no        |
-| timestamp_layout      | 20060102T15:04:05 | Go timestamp layout                  | 060102-150405         | no        |
-| timestamp_location    | UTC               | print timestamp in specific timezone | Asia/Seoul            | no        |
-| optional_keys         |                   | optional keys to send                | level,hostname        | no        |
-| surppress_duplication | no                | supress duplicated messages          | yes                   | no        |
-| floor_float           | no                | floor float value                    | yes                   | no        |
+| param name            | default            | description                    | example               | mandatory |
+|-----------------------|--------------------|--------------------------------|-----------------------|-----------|
+| Name                  | telegram           | pulgin name (fixed)            |                       | yes       |
+| api_token             |                    | telegram api token             | YOUR_API_KEY          | yes       |
+| room_ids              |                    | comma seperated room ids       | 1111111111,2222222222 | yes       |
+| message_key           | message            | key for message to send        | cpu_p                 | no        |
+| timestamp_layout      | 20060102T15:04:05Z | Go timestamp layout            | 060102-150405         | no        |
+| timestamp_location    | UTC                | timestamp in specific timezone | Asia/Seoul            | no        |
+| optional_keys         |                    | optional keys to send          | level,hostname        | no        |
+| surppress_duplication | no                 | supress duplicated messages    | yes                   | no        |
+| floor_float           | no                 | floor float value              | yes                   | no        |
 
 ## Build and Run
 
