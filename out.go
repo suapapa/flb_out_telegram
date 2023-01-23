@@ -23,7 +23,7 @@ func FLBPluginRegister(def unsafe.Pointer) int {
 //export FLBPluginInit
 func FLBPluginInit(plugin unsafe.Pointer) int {
 	tgApiToken := output.FLBPluginConfigKey(plugin, "api_token")
-	tgRoomIDs := output.FLBPluginConfigKey(plugin, "rooms_ids")
+	tgRoomIDs := output.FLBPluginConfigKey(plugin, "room_ids")
 	if err := initTgBot(tgApiToken, tgRoomIDs); err != nil {
 		log.Printf("fail to init telegram bot: %v", err)
 		return output.FLB_ERROR
