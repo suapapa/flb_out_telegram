@@ -164,13 +164,13 @@ func FLBPluginExit() int {
 // ---
 
 func str(v interface{}) string {
-	switch v.(type) {
+	switch v := v.(type) {
 	case string:
-		return v.(string)
+		return v
 	case []byte:
-		return string(v.([]byte))
+		return string(v)
 	case *C.char:
-		return C.GoString(v.(*C.char))
+		return C.GoString(v)
 	default:
 		return fmt.Sprintf("%v", v)
 	}
