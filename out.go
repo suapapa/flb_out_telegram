@@ -20,6 +20,7 @@ var (
 	optKeys    []string
 	lastMsgMap = map[string]string{}
 	skipDupMsg bool
+	floorFloat bool
 )
 
 //export FLBPluginRegister
@@ -62,16 +63,20 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 		tsLoc, _ = time.LoadLocation("UTC")
 	}
 
-	if getParam("option_keys") != "" {
-		optKeys = strings.Split(getParam("option_keys"), ",")
+	if getParam("optional_keys") != "" {
+		optKeys = strings.Split(getParam("optional_keys"), ",")
 		for i, v := range optKeys {
 			optKeys[i] = strings.TrimSpace(v)
 		}
 		sort.Strings(optKeys)
 	}
 
-	if getParam("supress_duplication") == "yes" {
+	if getParam("surpress_duplication") == "yes" {
 		skipDupMsg = true
+	}
+
+	if getParam("floor_float") == "yes" {
+		floorFloat = true
 	}
 
 	return output.FLB_OK
@@ -117,7 +122,7 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 		}
 		if optMsg != "" {
 			msg = fmt.Sprintf(
-				"%s\n---\n%s\n---\n%s",
+				"%s\n---\n%s---\n%s",
 				msg, optMsg, tsStr,
 			)
 		} else {
@@ -127,20 +132,6 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 			)
 		}
 
-		/*V
-		var msg string
-		// Print record keys and values
-		msg = fmt.Sprintf(
-			"[%d] %s: [%s, {",
-			count,
-			C.GoString(tag),
-			timestamp.String(),
-		)
-		for k, v := range record {
-			msg += fmt.Sprintf("\"%s\": %v, ", k, v)
-		}
-		msg += "}\n"
-		*/
 		if err := sendMsgToTelegram(msg); err != nil {
 			log.Printf("fail to send msg to telegram: %v", err)
 			return output.FLB_ERROR
@@ -171,6 +162,18 @@ func str(v interface{}) string {
 		return string(v)
 	case *C.char:
 		return C.GoString(v)
+	case float64:
+		if floorFloat {
+			return fmt.Sprintf("%d", int(v+0.5))
+		} else {
+			return fmt.Sprintf("%f", v)
+		}
+	case float32:
+		if floorFloat {
+			return fmt.Sprintf("%d", int(v+0.5))
+		} else {
+			return fmt.Sprintf("%f", v)
+		}
 	default:
 		return fmt.Sprintf("%v", v)
 	}
