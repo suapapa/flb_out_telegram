@@ -8,10 +8,13 @@ import (
 
 	"github.com/fluent/fluent-bit-go/output"
 )
+import (
+	"log"
+)
 
 //export FLBPluginRegister
 func FLBPluginRegister(def unsafe.Pointer) int {
-	return output.FLBPluginRegister(def, "gstdout", "Stdout GO!")
+	return output.FLBPluginRegister(def, "telegram", "Telegram Output Plugin.")
 }
 
 // (fluentbit will call this)
@@ -19,9 +22,13 @@ func FLBPluginRegister(def unsafe.Pointer) int {
 //
 //export FLBPluginInit
 func FLBPluginInit(plugin unsafe.Pointer) int {
-	// Example to retrieve an optional configuration parameter
-	param := output.FLBPluginConfigKey(plugin, "param")
-	fmt.Printf("[flb-go] plugin parameter = '%s'\n", param)
+	tgApiToken := output.FLBPluginConfigKey(plugin, "api_token")
+	tgRoomIDs := output.FLBPluginConfigKey(plugin, "rooms_ids")
+	if err := initTgBot(tgApiToken, tgRoomIDs); err != nil {
+		log.Printf("fail to init telegram bot: %v", err)
+		return output.FLB_ERROR
+	}
+
 	return output.FLB_OK
 }
 
@@ -38,31 +45,34 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 	// Iterate Records
 	count = 0
 	for {
-		// Extract Record
 		ret, ts, record = output.GetRecord(dec)
-		if ret != 0 {
+		if ret != 0 { // all record have been flushed
 			break
 		}
 
-		var timestamp time.Time
-		switch t := ts.(type) {
-		case output.FLBTime:
-			timestamp = ts.(output.FLBTime).Time
-		case uint64:
-			timestamp = time.Unix(int64(t), 0)
-		default:
-			fmt.Println("time provided invalid, defaulting to now.")
-			timestamp = time.Now()
-		}
-
+		timestamp := getTime(ts)
+		var msg string
 		// Print record keys and values
-		fmt.Printf("[%d] %s: [%s, {", count, C.GoString(tag),
-			timestamp.String())
+		msg = fmt.Sprintf(
+			"[%d] %s: [%s, {",
+			count,
+			C.GoString(tag),
+			timestamp.String(),
+		)
 		for k, v := range record {
-			fmt.Printf("\"%s\": %v, ", k, v)
+			msg += fmt.Sprintf("\"%s\": %v, ", k, v)
 		}
-		fmt.Printf("}\n")
+		msg += "}\n"
+		if err := sendMsgToTelegram(msg); err != nil {
+			log.Printf("fail to send msg to telegram: %v", err)
+			return output.FLB_ERROR
+		}
 		count++
+	}
+
+	if C.int(count) != length {
+		log.Printf("error: count(%d) != length(%d)", count, length)
+		return output.FLB_ERROR
 	}
 
 	// Return options:
@@ -76,6 +86,20 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 //export FLBPluginExit
 func FLBPluginExit() int {
 	return output.FLB_OK
+}
+
+func getTime(ts any) time.Time {
+	var timestamp time.Time
+	switch t := ts.(type) {
+	case output.FLBTime:
+		timestamp = ts.(output.FLBTime).Time
+	case uint64:
+		timestamp = time.Unix(int64(t), 0)
+	default:
+		fmt.Println("time provided invalid, defaulting to now.")
+		timestamp = time.Now()
+	}
+	return timestamp
 }
 
 func main() {
