@@ -23,7 +23,10 @@ FluentBit output plugin for Telegram
 Build docker image `flb-tg` which is Telegram enabled fluent-bit image:
 
 ```bash
-docker build --tag=flb-tg:latest .
+docker build \
+  --platform linux/amd64 \
+  --tag=flb-tg:latest \
+  .
 ```
 
 Run example:
