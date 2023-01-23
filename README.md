@@ -2,6 +2,8 @@
 
 FluentBit output plugin for Telegram
 
+![screenshot](_image/screenshot.jpg)
+
 ## FluentBit OUTPUT Params
 
 | param name            | default            | description                    | example               | mandatory |
