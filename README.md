@@ -2,7 +2,7 @@
 
 FluentBit output plugin for Telegram
 
-![screenshot](_image/screenshot.jpg)
+![logo](_image/fb_out_telegram.png)
 
 ## FluentBit OUTPUT Params
 
