@@ -69,7 +69,7 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 		}
 	}
 
-	if getParam("surpress_duplication") == "yes" {
+	if getParam("supress_duplication") == "yes" {
 		skipDupMsg = true
 	}
 

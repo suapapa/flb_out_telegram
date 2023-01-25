@@ -15,7 +15,7 @@ FluentBit output plugin for Telegram
 | timestamp_layout      | 20060102T15:04:05Z | Go timestamp layout            | 060102-150405         | no        |
 | timestamp_location    | UTC                | timestamp in specific timezone | Asia/Seoul            | no        |
 | optional_keys         |                    | optional keys to send          | level,hostname        | no        |
-| surppress_duplication | no                 | supress duplicated messages    | yes                   | no        |
+| suppress_duplication | no                 | suppress duplicated messages    | yes                   | no        |
 | floor_float           | no                 | floor float value              | yes                   | no        |
 
 ## Build and Run
