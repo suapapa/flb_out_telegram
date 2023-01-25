@@ -13,13 +13,15 @@ import (
 )
 
 var (
-	msgKey       = "message"
-	tsLayout     = "20060102T15:04:05Z"
-	tsLoc        *time.Location
-	optKeys      []string
-	lastMsgByTag = map[string]string{}
-	skipDupMsg   bool
-	floorFloat   bool
+	msgKey         = "message"
+	tsLayout       = "20060102T15:04:05Z"
+	tsLoc          *time.Location
+	optKeys        []string
+	lastMsgByTag   = map[string]string{}
+	lastMsgTsByTag = map[string]time.Time{}
+	skipDupMsg     bool
+	skipDupMsgDur  time.Duration
+	floorFloat     bool
 )
 
 //export FLBPluginRegister
@@ -34,6 +36,14 @@ func FLBPluginRegister(def unsafe.Pointer) int {
 func FLBPluginInit(plugin unsafe.Pointer) int {
 	getParam := func(key string) string {
 		return output.FLBPluginConfigKey(plugin, key)
+	}
+
+	isParamTrue := func(key string) bool {
+		switch p := strings.ToLower(getParam(key)); p {
+		case "yes", "on", "true":
+			return true
+		}
+		return false
 	}
 
 	tgApiToken := getParam("api_token")
@@ -69,17 +79,14 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 		}
 	}
 
-	switch p := strings.ToLower(getParam("suppress_duplication")); p {
-	case "yes", "on", "true":
-		skipDupMsg = true
-	}
+	skipDupMsg = isParamTrue("suppress_duplication")
+	floorFloat = isParamTrue("floor_float")
 
-	if getParam("floor_float") == "yes" {
-		floorFloat = true
-	}
-	switch p := strings.ToLower(getParam("floor_float")); p {
-	case "yes", "on", "true":
-		floorFloat = true
+	var err error
+	skipDupMsgDur, err = time.ParseDuration(getParam("suppress_timeout"))
+	if err != nil {
+		log.Printf("fail to parse suppress_timeout: %v", err)
+		// return output.FLB_ERROR // not fatal
 	}
 
 	return output.FLB_OK
@@ -111,12 +118,18 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 			return output.FLB_ERROR
 		}
 
-		if lastMsg, ok := lastMsgByTag[str(tag)]; ok && skipDupMsg && lastMsg == msg {
-			continue
+		tagStr := str(tag)
+		if lastMsg, ok := lastMsgByTag[tagStr]; ok && skipDupMsg {
+			if lastMsg == msg && time.Since(lastMsgTsByTag[tagStr]) < skipDupMsgDur {
+				continue
+			}
 		}
-		lastMsgByTag[str(tag)] = msg
 
-		tsStr := getTime(ts).In(tsLoc).Format(tsLayout)
+		tsTime := getTime(ts)
+		lastMsgByTag[tagStr] = msg
+		lastMsgTsByTag[tagStr] = tsTime
+
+		tsStr := tsTime.In(tsLoc).Format(tsLayout)
 		var optMsg string
 		for _, k := range optKeys {
 			if v, ok := valueByKey[k]; ok {
