@@ -69,11 +69,16 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 		}
 	}
 
-	if getParam("supress_duplication") == "yes" {
+	switch p := strings.ToLower(getParam("suppress_duplication")); p {
+	case "yes", "on", "true":
 		skipDupMsg = true
 	}
 
 	if getParam("floor_float") == "yes" {
+		floorFloat = true
+	}
+	switch p := strings.ToLower(getParam("floor_float")); p {
+	case "yes", "on", "true":
 		floorFloat = true
 	}
 
