@@ -22,6 +22,8 @@ var (
 	skipDupMsg     bool
 	skipDupMsgDur  time.Duration
 	floorFloat     bool
+
+	pluginVersion = "dev"
 )
 
 //export FLBPluginRegister
@@ -89,6 +91,7 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 		// return output.FLB_ERROR // not fatal
 	}
 
+	fmt.Printf("telegram output plugin %s initialized", pluginVersion)
 	return output.FLB_OK
 }
 
