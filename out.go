@@ -37,7 +37,14 @@ func FLBPluginRegister(def unsafe.Pointer) int {
 //export FLBPluginInit
 func FLBPluginInit(plugin unsafe.Pointer) int {
 	getParam := func(key string) string {
-		return output.FLBPluginConfigKey(plugin, key)
+		p := output.FLBPluginConfigKey(plugin, key)
+
+		// Trim inline comment
+		if i := strings.Index(p, "#"); i != -1 {
+			p = p[:i]
+		}
+
+		return strings.TrimSpace(p)
 	}
 
 	isParamTrue := func(key string) bool {
