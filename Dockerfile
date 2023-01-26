@@ -16,4 +16,5 @@ FROM fluent/fluent-bit:latest
 COPY --from=builder /src/out_telegram.so /plugins/out_telegram.so
 COPY ./conf /conf
 
-CMD ["/fluent-bit/bin/fluent-bit", "-c", "/conf/flb.conf"]
+ENTRYPOINT ["/fluent-bit/bin/fluent-bit"]
+CMD ["-c", "/conf/flb.conf"]
