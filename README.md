@@ -40,7 +40,7 @@ docker run \
   flb-tg:latest
 ```
 
-## Configuration
+## Run Telegram enabled FluentBit
 
 Check out [sample conf file](conf/flb.conf).
 Make your own conf and run like this:
@@ -51,9 +51,31 @@ docker run \
   -e TG_API_TOKEN="YOUR_TELEGRAM_API_TOKEN"
   -e TG_ROOM_IDS="ROOM_ID1, ROOM_ID2"
   -v /YOUR/FLB_CONF_PATH:/conf/flb.conf
-  flb-tg:latest
+  flb-tg:latest -c /conf/flb.conf
+```
+
+Example of practical cofiguration with `rewrite_tag` filter:
+
+```
+[FILTER]
+    Name    rewrite_tag
+    Match   app.*
+    Rule    $alert ^(.+)$ notify.$1 true
+    Rule    $level ^error notify.telegram true
+    Rule    $level ^fatal notify.telegram true
+
+[OUTPUT]
+    Name    telegram
+    Match   notify.telegram
+    api_token               ${TG_API_TOKEN}
+    room_ids                ${TG_ROOM_IDS}
+    timestamp_location      Asia/Seoul
+    timestamp_layout        20060102 15:04:05
+    optional_keys           level,program,ver,hostname
+    surpress_duplication    yes
+    surpress_timeout        10s
 ```
 
 ## Reference
 
-- <https://docs.fluentbit.io/manual/>
+- [Fluent Bit Official Manual - Golang Output Plugins](https://docs.fluentbit.io/manual/development/golang-output-plugins)
