@@ -72,8 +72,8 @@ Example of practical cofiguration with `rewrite_tag` filter:
     timestamp_location      Asia/Seoul
     timestamp_layout        20060102 15:04:05
     optional_keys           level,program,ver,hostname
-    surpress_duplication    yes
-    surpress_timeout        10s
+    suppress_duplication    yes
+    suppress_timeout        10s
 ```
 
 ## Reference
