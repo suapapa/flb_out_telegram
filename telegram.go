@@ -1,56 +1,77 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/pkg/errors"
 )
 
-var (
-	tgBot   *tgbotapi.BotAPI
-	tgRooms []int64
-)
+const telegramHTTPTimeout = 60 * time.Second
 
-// initTgBot initialize telegram bot
-//
-// apiToken: telegram bot api token
-// roomIDs: telegram room id (slice of string)
-func initTgBot(apiToken string, roomIDs string) error {
-	if tgBot != nil {
-		return fmt.Errorf("tgBot already initialized")
-	}
-
-	var err error
-	tgBot, err = tgbotapi.NewBotAPI(apiToken)
-	if err != nil {
-		return errors.Wrap(err, "fail to init telegram bot")
-	}
-
-	for _, roomID := range strings.Split(roomIDs, ",") {
-		id, err := strconv.ParseInt(strings.TrimSpace(roomID), 10, 64)
-		if err != nil {
-			return errors.Wrap(err, "fail to init telegram bot")
-		}
-		tgRooms = append(tgRooms, id)
-	}
-	return nil
+// TelegramOutput sends text messages to one or more Telegram chats.
+type TelegramOutput struct {
+	bot     *tgbotapi.BotAPI
+	roomIDs []int64
 }
 
-// sendMsgToTelegram send msg to telegram multiple rooms
-func sendMsgToTelegram(msg string) error {
-	if len(tgRooms) == 0 {
-		return fmt.Errorf("no telegram room to send")
+// NewTelegramOutput builds a TelegramOutput from an API token and comma-separated chat IDs.
+func NewTelegramOutput(apiToken string, roomIDsCSV string) (*TelegramOutput, error) {
+	ids, err := parseRoomIDs(roomIDsCSV)
+	if err != nil {
+		return nil, err
 	}
 
-	for _, roomID := range tgRooms {
-		c := tgbotapi.NewMessage(roomID, msg)
-		if _, err := tgBot.Send(c); err != nil {
-			return errors.Wrap(err, "fail to send msg to telegram")
+	httpClient := &http.Client{Timeout: telegramHTTPTimeout}
+	bot, err := tgbotapi.NewBotAPIWithClient(apiToken, tgbotapi.APIEndpoint, httpClient)
+	if err != nil {
+		return nil, fmt.Errorf("init telegram bot: %w", err)
+	}
+
+	return &TelegramOutput{bot: bot, roomIDs: ids}, nil
+}
+
+func parseRoomIDs(roomIDsCSV string) ([]int64, error) {
+	parts := strings.Split(roomIDsCSV, ",")
+	ids := make([]int64, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(p, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("parse room id %q: %w", p, err)
+		}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("no telegram room ids configured")
+	}
+	return ids, nil
+}
+
+// SendMessage delivers text to every configured chat. ctx is checked before each send;
+// HTTP calls use the client timeout configured in NewTelegramOutput.
+func (t *TelegramOutput) SendMessage(ctx context.Context, text string) error {
+	if t == nil || t.bot == nil {
+		return fmt.Errorf("telegram: not initialized")
+	}
+	if len(t.roomIDs) == 0 {
+		return fmt.Errorf("telegram: no chat ids configured")
+	}
+	for _, roomID := range t.roomIDs {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("telegram: %w", err)
+		}
+		msg := tgbotapi.NewMessage(roomID, text)
+		if _, err := t.bot.Send(msg); err != nil {
+			return fmt.Errorf("telegram: send to %d: %w", roomID, err)
 		}
 	}
-
 	return nil
 }

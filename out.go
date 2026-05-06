@@ -3,6 +3,7 @@ package main
 import (
 	"C"
 
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -12,19 +13,25 @@ import (
 	"github.com/fluent/fluent-bit-go/output"
 )
 
-var (
-	msgKey         = "message"
-	tsLayout       = "20060102T15:04:05Z"
-	tsLoc          *time.Location
-	optKeys        []string
-	lastMsgByTag   = map[string]string{}
-	lastMsgTsByTag = map[string]time.Time{}
-	skipDupMsg     bool
-	skipDupMsgDur  time.Duration
-	floorFloat     bool
+// pluginState holds runtime configuration and the Telegram sender for the Fluent Bit plugin.
+type pluginState struct {
+	telegram *TelegramOutput
 
-	pluginVersion = "dev"
-)
+	msgKey       string
+	tsLayout     string
+	tsLoc        *time.Location
+	optKeys      []string
+	lastMsgByTag map[string]string
+	lastMsgTs    map[string]time.Time
+
+	skipDupMsg    bool
+	skipDupMsgDur time.Duration
+	floorFloat    bool
+}
+
+var state pluginState
+
+var pluginVersion = "dev"
 
 //export FLBPluginRegister
 func FLBPluginRegister(def unsafe.Pointer) int {
@@ -36,6 +43,11 @@ func FLBPluginRegister(def unsafe.Pointer) int {
 //
 //export FLBPluginInit
 func FLBPluginInit(plugin unsafe.Pointer) int {
+	if state.telegram != nil {
+		log.Printf("telegram plugin already initialized")
+		return output.FLB_ERROR
+	}
+
 	getParam := func(key string) string {
 		p := output.FLBPluginConfigKey(plugin, key)
 
@@ -55,97 +67,102 @@ func FLBPluginInit(plugin unsafe.Pointer) int {
 		return false
 	}
 
-	tgApiToken := getParam("api_token")
-	tgRoomIDs := getParam("room_ids")
-	if err := initTgBot(tgApiToken, tgRoomIDs); err != nil {
+	tgAPI := getParam("api_token")
+	tgRooms := getParam("room_ids")
+	tgOut, err := NewTelegramOutput(tgAPI, tgRooms)
+	if err != nil {
 		log.Printf("fail to init telegram bot: %v", err)
 		return output.FLB_ERROR
 	}
 
+	st := pluginState{
+		telegram:     tgOut,
+		msgKey:       "message",
+		tsLayout:     "20060102T15:04:05Z",
+		lastMsgByTag: map[string]string{},
+		lastMsgTs:    map[string]time.Time{},
+	}
+
 	if getParam("message_key") != "" {
-		msgKey = getParam("message_key")
+		st.msgKey = getParam("message_key")
 	}
 
 	if getParam("timestamp_layout") != "" {
-		tsLayout = getParam("timestamp_layout")
+		st.tsLayout = getParam("timestamp_layout")
 	}
 
 	if getParam("timestamp_location") != "" {
-		var err error
-		tsLoc, err = time.LoadLocation(getParam("timestamp_location"))
-		if err != nil {
-			log.Printf("fail to load location: %v", err)
+		var locErr error
+		st.tsLoc, locErr = time.LoadLocation(getParam("timestamp_location"))
+		if locErr != nil {
+			log.Printf("fail to load location: %v", locErr)
 			return output.FLB_ERROR
 		}
 	} else {
-		tsLoc, _ = time.LoadLocation("UTC")
+		st.tsLoc, _ = time.LoadLocation("UTC")
 	}
 
 	if getParam("optional_keys") != "" {
-		optKeys = strings.Split(getParam("optional_keys"), ",")
-		for i, v := range optKeys {
-			optKeys[i] = strings.TrimSpace(v)
+		st.optKeys = strings.Split(getParam("optional_keys"), ",")
+		for i, v := range st.optKeys {
+			st.optKeys[i] = strings.TrimSpace(v)
 		}
 	}
 
-	skipDupMsg = isParamTrue("suppress_duplication")
-	floorFloat = isParamTrue("floor_float")
+	st.skipDupMsg = isParamTrue("suppress_duplication")
+	st.floorFloat = isParamTrue("floor_float")
 
-	var err error
-	skipDupMsgDur, err = time.ParseDuration(getParam("suppress_timeout"))
+	st.skipDupMsgDur, err = time.ParseDuration(getParam("suppress_timeout"))
 	if err != nil {
 		log.Printf("fail to parse suppress_timeout: %v", err)
-		// return output.FLB_ERROR // not fatal
+		// not fatal
 	}
 
-	fmt.Printf("telegram output plugin %s initialized", pluginVersion)
+	state = st
+
+	fmt.Printf("telegram output plugin %s initialized\n", pluginVersion)
 	return output.FLB_OK
 }
 
 //export FLBPluginFlush
 func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
+	ctx := context.Background()
+
 	var ret int
 	var ts interface{}
 	var record map[interface{}]interface{}
 	dec := output.NewDecoder(data, int(length)) // Create Fluent Bit decoder
 
-	// count := 0 // batch out count
 	for {
 		ret, ts, record = output.GetRecord(dec)
 		if ret != 0 { // all record have been flushed
 			break
 		}
 
-		valueByKey := map[string]string{}
+		valueByKey := make(map[string]string, len(record))
 		for k, v := range record {
-			valueByKey[str(k)] = str(v)
+			valueByKey[formatKey(k)] = formatRecordValue(state.floorFloat, v)
 		}
 
-		var msg string
-		var ok bool
-		if msg, ok = valueByKey[msgKey]; !ok {
-			log.Printf("message key not found: %v", msgKey)
+		msg, ok := valueByKey[state.msgKey]
+		if !ok {
+			log.Printf("message key not found: %v", state.msgKey)
 			return output.FLB_ERROR
 		}
 
-		tagStr := str(tag)
-		if lastMsg, ok := lastMsgByTag[tagStr]; ok && skipDupMsg {
-			if lastMsg == msg && time.Since(lastMsgTsByTag[tagStr]) < skipDupMsgDur {
+		tagStr := formatRecordValue(false, tag)
+		if lastMsg, dup := state.lastMsgByTag[tagStr]; dup && state.skipDupMsg {
+			if lastMsg == msg && time.Since(state.lastMsgTs[tagStr]) < state.skipDupMsgDur {
 				continue
 			}
 		}
 
-		tsTime := getTime(ts)
-		lastMsgByTag[tagStr] = msg
-		lastMsgTsByTag[tagStr] = tsTime
+		tsTime := parseRecordTime(ts)
+		state.lastMsgByTag[tagStr] = msg
+		state.lastMsgTs[tagStr] = tsTime
 
-		tsStr := tsTime.In(tsLoc).Format(tsLayout)
-		var optMsg string
-		for _, k := range optKeys {
-			if v, ok := valueByKey[k]; ok {
-				optMsg += fmt.Sprintf("- %s: %s\n", k, v)
-			}
-		}
+		tsStr := tsTime.In(state.tsLoc).Format(state.tsLayout)
+		optMsg := buildOptionalLines(valueByKey, state.optKeys)
 		if optMsg != "" {
 			msg = fmt.Sprintf(
 				"%s\n---\n%s---\n%s",
@@ -158,11 +175,10 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 			)
 		}
 
-		if err := sendMsgToTelegram(msg); err != nil {
+		if err := state.telegram.SendMessage(ctx, msg); err != nil {
 			log.Printf("fail to send msg to telegram: %v", err)
 			return output.FLB_ERROR
 		}
-		// count++
 	}
 
 	// Return options:
@@ -178,9 +194,31 @@ func FLBPluginExit() int {
 	return output.FLB_OK
 }
 
-// ---
+func buildOptionalLines(valueByKey map[string]string, keys []string) string {
+	if len(keys) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, k := range keys {
+		if v, ok := valueByKey[k]; ok {
+			b.WriteString(fmt.Sprintf("- %s: %s\n", k, v))
+		}
+	}
+	return b.String()
+}
 
-func str(v interface{}) string {
+func formatKey(v interface{}) string {
+	switch v := v.(type) {
+	case string:
+		return v
+	case []byte:
+		return string(v)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+func formatRecordValue(floorFloat bool, v interface{}) string {
 	switch v := v.(type) {
 	case string:
 		return v
@@ -191,32 +229,28 @@ func str(v interface{}) string {
 	case float64:
 		if floorFloat {
 			return fmt.Sprintf("%d", int(v+0.5))
-		} else {
-			return fmt.Sprintf("%f", v)
 		}
+		return fmt.Sprintf("%f", v)
 	case float32:
 		if floorFloat {
 			return fmt.Sprintf("%d", int(v+0.5))
-		} else {
-			return fmt.Sprintf("%f", v)
 		}
+		return fmt.Sprintf("%f", v)
 	default:
 		return fmt.Sprintf("%v", v)
 	}
 }
 
-func getTime(ts any) time.Time {
-	var timestamp time.Time
+func parseRecordTime(ts any) time.Time {
 	switch t := ts.(type) {
 	case output.FLBTime:
-		timestamp = ts.(output.FLBTime).Time
+		return t.Time
 	case uint64:
-		timestamp = time.Unix(int64(t), 0)
+		return time.Unix(int64(t), 0)
 	default:
-		fmt.Println("time provided invalid, defaulting to now.")
-		timestamp = time.Now()
+		log.Printf("invalid timestamp type %T, using now", ts)
+		return time.Now()
 	}
-	return timestamp
 }
 
 func main() {
